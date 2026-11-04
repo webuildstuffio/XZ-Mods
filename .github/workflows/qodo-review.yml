@@ -1,4 +1,4 @@
-# Qodo AI Code Suggestions v3.6.1
+# Qodo AI Code Suggestions v3.7.0
 # Inline code suggestions only — the highest-value, lowest-noise output.
 # All config lives in webuildstuffio/pr-agent-settings/.pr_agent.toml (global)
 # and per-repo .pr_agent.toml (overrides). This workflow is intentionally minimal.
@@ -98,6 +98,7 @@ jobs:
     timeout-minutes: 15
     continue-on-error: true
     permissions:
+      checks: write
       issues: write
       pull-requests: write
       contents: read
@@ -159,12 +160,67 @@ jobs:
           check_var QODO_FALLBACK_3 "$QODO_FALLBACK_3"
           exit "$fail"
 
+      # Global Qodo config (wiring v3.7.0): pr-agent's own
+      # global_settings_repo fetch reads pr-agent-settings through
+      # the API with this job's GITHUB_TOKEN, which 404s while that
+      # repo is private, silently dropping all global tuning not
+      # duplicated in the env block below. This action (same org
+      # Actions access transport as the Jev action) copies the
+      # bundled global .pr_agent.toml into the workspace; the
+      # pr-agent step loads it via config.extra_config_url.
+      # Precedence in pr-agent: extra config < per-repo
+      # .pr_agent.toml < env block, so local overrides still win.
+      - name: Global Qodo config
+        id: qodo_config
+        continue-on-error: true
+        uses: webuildstuffio/pr-agent-settings/qodo-config@72eccac3b473975585959eba86e37ae973229940
+
+      # Failure visibility: if the config action failed to run,
+      # post a FAILED "Qodo global config" check on the PR head
+      # SHA. The suggestions step still runs (on upstream
+      # defaults), so a config outage degrades visibly instead of
+      # silently. A load failure of the action reference itself
+      # fails this job at preparation, which likewise surfaces as
+      # a failed job check rather than a silent pass.
+      - name: Qodo config failure check
+        if: >-
+          !cancelled() && steps.qodo_config.outcome == 'failure'
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const fromEvent = context.payload.pull_request;
+            const prNumber = fromEvent?.number ?? context.payload.issue?.number ?? Number(process.env.TARGET_PR || 0);
+            let headSha = fromEvent?.head?.sha ?? '';
+            if (!headSha && prNumber) {
+              const { data: pr } = await github.rest.pulls.get({
+                owner: context.repo.owner, repo: context.repo.repo,
+                pull_number: prNumber
+              });
+              headSha = pr.head.sha;
+            }
+            if (!headSha) {
+              core.warning('Qodo config step failed but no PR head SHA is available; no check posted.');
+              return;
+            }
+            await github.rest.checks.create({
+              owner: context.repo.owner, repo: context.repo.repo,
+              name: 'Qodo global config',
+              head_sha: headSha,
+              status: 'completed',
+              conclusion: 'failure',
+              output: {
+                title: 'Qodo global config failed to load',
+                summary: 'The Global Qodo config step failed, so pr-agent ran without the org-global .pr_agent.toml (upstream defaults only). See the "Global Qodo config" step log in the Code Suggestions job of this workflow run.'
+              }
+            });
+
       - name: Run Qodo /improve
         uses: docker://pragent/pr-agent@sha256:80edef71baa3df28c129d858d4b53784abfc14704c235efb32b6c461d5399a6d # v0.48.0-github_action
         env:
           OPENROUTER__KEY: ${{ secrets.QODO_OPENROUTER_API_KEY }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           config.global_settings_repo: "pr-agent-settings"
+          config.extra_config_url: "/github/workspace/.pr_agent.global.toml"
           config.model: >-
             ${{ vars.QODO_MODEL || 'openrouter/nvidia/nemotron-3-ultra-550b-a55b:free' }}
           config.fallback_models: >-
