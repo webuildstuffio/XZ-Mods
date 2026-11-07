@@ -213,10 +213,15 @@ jobs:
                 \( -name '*.test.*' -o -name '*.spec.*' \) \
                 -print 2>/dev/null | wc -l) ;;
             none|shell)
+              # Vendored deviation: this repo's suites are Python
+              # (test_*.py / *_test.py), so the none arm counts those
+              # alongside the shell patterns; the reusable's arm
+              # would report a false test_count of 0 here.
               TEST_COUNT=$(find . -path ./node_modules -prune \
                 -o -path ./.git -prune -o \
                 \( -name '*.bats' -o -name '*_test.sh' \
-                   -o -name 'test_*.sh' \) \
+                   -o -name 'test_*.sh' -o -name 'test_*.py' \
+                   -o -name '*_test.py' \) \
                 -print 2>/dev/null | wc -l) ;;
             *) TEST_COUNT=null ;;
           esac
