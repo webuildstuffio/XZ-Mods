@@ -1,4 +1,4 @@
-# Qodo AI Code Suggestions v3.8.0
+# Qodo AI Code Suggestions v3.9.0
 # Inline code suggestions only — the highest-value, lowest-noise output.
 # All config lives in webuildstuffio/pr-agent-settings/.pr_agent.toml (global)
 # and per-repo .pr_agent.toml (overrides). This workflow is intentionally minimal.
@@ -11,12 +11,51 @@
 # retries 1, ai_timeout 180s per call, no same-model retry on timeout.
 # API: direct OpenRouter (no AI Gateway proxy — CF gateway corrupts streaming).
 # DO NOT use openrouter/free as primary — proven broken (silent no-reviews).
-# NOTE: webuildstuffio/pr-agent-settings MUST stay PUBLIC — the default
-# GITHUB_TOKEN cannot read it as a private repo (404), which silently drops
-# all global tuning (temperature, score threshold, focus instructions).
+# NOTE (v3.9.0): the two composite actions live in the PUBLIC
+# webuildstuffio/pr-agent-actions repo (a public consumer can
+# never resolve an action from a private repo, and no token can
+# be passed for action resolution). The tuned .pr_agent.toml
+# ships as the PRIVATE ghcr.io/webuildstuffio/pr-agent-config
+# package, published by pr-agent-settings; the qodo-config
+# action pulls it with this job's GITHUB_TOKEN and the
+# config.extra_config_url contract is unchanged. A repo on
+# this wiring therefore needs a one-time "Manage Actions
+# access" grant on that package and packages: read below.
+# pr-agent-settings must stay PUBLIC only until a repo moves
+# to this wiring: on the old wiring the default GITHUB_TOKEN
+# cannot read it as a private repo (404), which silently drops
+# all global tuning (temperature, score threshold, focus
+# instructions). The global_settings_repo env remains set as a
+# fallback layer, unchanged.
 # /review and /describe available via manual /command in PR comments.
 #
 # CHANGELOG:
+# v3.9.0: (Nov 8 2026) Privacy split (pr-agent-settings #18):
+#          qodo-config and jev move to the new public
+#          webuildstuffio/pr-agent-actions repo at a pinned
+#          full SHA, and qodo-config v2 pulls the global config
+#          from the private pr-agent-config package (published
+#          by pr-agent-settings) with the job GITHUB_TOKEN
+#          instead of copying a toml bundled in the action
+#          archive. The suggest job gains packages: read for
+#          the pull. Same extra_config_url path, same failure
+#          checks, same precedence; repos on this wiring no
+#          longer need pr-agent-settings to be public.
+# v3.8.2: (Nov 6 2026) Twin dedup (architecture audit #176):
+#          the "Set PR for manual runs" step in the suggest
+#          job now passes pr_number via env like the jev job
+#          (no input interpolated into the script), making
+#          the two steps byte-identical; the Qodo config and
+#          Jev failure-check steps share one script body, with
+#          check name, title and summary passed via env.
+#          scripts/tests/check-workflow-drift.sh (Shell CI)
+#          fails if either pair diverges. Companion change:
+#          claude.yml v5.28.20.
+# v3.8.1: (Nov 6 2026) Full-SHA pinning for first-party
+#          actions (repo-review #696, owner-approved): every
+#          version-tag pin moves to its full 40-char SHA
+#          with the version kept as a trailing comment.
+#          Canonical pass with claude.yml v5.28.19.
 # v3.8.0: (Nov 6 2026) Skip the review jobs on docs-only
 #          PRs (repo-review #686): a changes job runs the
 #          fleet dorny/paths-filter pattern (job-level,
@@ -26,9 +65,16 @@
 #          filter errors: fail open, the review runs).
 #          Docs-only PRs get no Qodo suggestions and no
 #          Jev pass, saving about 3 billed min per
-#          docs-only PR opening. Same wave (repo-review
-#          #687): the dead Docker cache step is removed;
-#          it never saved a single cache entry.
+#          docs-only PR opening. The same wave's cache
+#          removal (repo-review #687) landed in v3.7.1.
+# v3.7.1: (Nov 6 2026) Remove the dead Docker cache step
+#          (repo-review #687). The workflow's triggers
+#          (pull_request, issue_comment, workflow_dispatch)
+#          never produced a single qodo-docker cache entry
+#          in any sampled fleet repo, and /var/lib/docker is
+#          not a portable cache path on ephemeral runners:
+#          the step only pretended to cache. No replacement;
+#          the pr-agent image pull is the honest cost.
 # v3.6.1: (Nov 4 2026) Jev repackaged as a composite action and
 #          moved into its own "Jev tagging" job. Loading is now
 #          uses: webuildstuffio/pr-agent-settings/jev at a pinned
@@ -46,6 +92,12 @@
 #          failure posts the same check via the API. Same jev-tag
 #          v2.1.0 logic and env contract; the job is
 #          continue-on-error and never gates a merge.
+# v3.5.1: (Oct 28 2026) Gate the issue_comment trigger on the comment
+#          author's association (OWNER / MEMBER / COLLABORATOR) so only
+#          trusted commenters can trigger paid-model runs via /improve,
+#          /review or /describe (repo-review#387; owner decision
+#          2026-10-24: GATE IT). pull_request and workflow_dispatch
+#          branches unchanged.
 # v3.5.0: (Oct 26 2026) Fleet sync (repo-review#399): pin the pr-agent
 #          runtime image by the v0.48.0 Docker Hub digest (as repo-review
 #          #430) instead of inheriting the rolling action wrapper; version
@@ -55,6 +107,9 @@
 #          job timeout-minutes 8 -> 15: one run makes several tool
 #          calls, each with its own fallback chain, and at 180s a call
 #          the old cap could kill the job mid-run on a slow day.
+# v3.3.2: (Oct 26 2026) Fix: pr-agent v0.48 turns namespace-wide settings
+#          off by default; set config.global_settings_repo in the step env
+#          so webuildstuffio/pr-agent-settings keeps applying (#102).
 # v3.3.1: (Sep 30 2026) Fix: issue_comment events cancelled in-progress PR reviews
 #          via shared concurrency group. Root cause: GH Actions evaluates concurrency
 #          BEFORE job-level 'if:', so any bot comment entering the same group killed
@@ -93,10 +148,8 @@ jobs:
     outputs:
       code: ${{ steps.filter.outputs.code }}
     steps:
-      - uses: actions/checkout@v7
-        with:
-          fetch-depth: 0
-      - uses: dorny/paths-filter@v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4
         id: filter
         with:
           # 'some-with-excludes' makes the negations below effective
@@ -132,6 +185,11 @@ jobs:
           github.event_name == 'issue_comment' &&
           github.event.issue.pull_request &&
           (
+            github.event.comment.author_association == 'OWNER' ||
+            github.event.comment.author_association == 'MEMBER' ||
+            github.event.comment.author_association == 'COLLABORATOR'
+          ) &&
+          (
             contains(github.event.comment.body, '/improve') ||
             contains(github.event.comment.body, '/review') ||
             contains(github.event.comment.body, '/describe')
@@ -150,11 +208,18 @@ jobs:
       issues: write
       pull-requests: write
       contents: read
+      # v3.9.0: the qodo-config action pulls the pr-agent-config
+      # package with this job's token.
+      packages: read
     name: Code Suggestions (free models)
     steps:
+      # Twin of the "Set PR for manual runs" step in the jev job
+      # below: the two blocks are byte-identical on purpose (the
+      # input arrives via env, never interpolated into the script);
+      # scripts/tests/check-workflow-drift.sh fails if they diverge.
       - name: Set PR for manual runs
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         env:
           PR_NUMBER: ${{ github.event.inputs.pr_number }}
         with:
@@ -169,15 +234,21 @@ jobs:
             else { core.setFailed('No open PRs'); }
 
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
       - name: Validate Qodo model variables
         env:
           QODO_MODEL: >-
-            ${{ vars.QODO_MODEL || 'openrouter/nvidia/nemotron-3-ultra-550b-a55b:free' }}
+            ${{ vars.QODO_MODEL ||
+            'openrouter/nvidia/nemotron-3-ultra-550b-a55b:free' }}
           QODO_FALLBACK_1: >-
-            ${{ vars.QODO_FALLBACK_1 || 'openrouter/google/gemma-4-31b-it:free' }}
+            ${{ vars.QODO_FALLBACK_1 ||
+            'openrouter/google/gemma-4-31b-it:free' }}
           QODO_FALLBACK_2: >-
-            ${{ vars.QODO_FALLBACK_2 || 'openrouter/google/gemma-4-26b-a4b-it:free' }}
+            ${{ vars.QODO_FALLBACK_2 ||
+            'openrouter/google/gemma-4-26b-a4b-it:free' }}
           QODO_FALLBACK_3: "${{ vars.QODO_FALLBACK_3 || 'openrouter/free' }}"
         run: |
           fail=0
@@ -201,20 +272,22 @@ jobs:
           check_var QODO_FALLBACK_3 "$QODO_FALLBACK_3"
           exit "$fail"
 
-      # Global Qodo config (wiring v3.7.0): pr-agent's own
+      # Global Qodo config (wiring v3.9.0): pr-agent's own
       # global_settings_repo fetch reads pr-agent-settings through
       # the API with this job's GITHUB_TOKEN, which 404s while that
       # repo is private, silently dropping all global tuning not
-      # duplicated in the env block below. This action (same org
-      # Actions access transport as the Jev action) copies the
-      # bundled global .pr_agent.toml into the workspace; the
-      # pr-agent step loads it via config.extra_config_url.
-      # Precedence in pr-agent: extra config < per-repo
-      # .pr_agent.toml < env block, so local overrides still win.
+      # duplicated in the env block below. This action (in the
+      # public pr-agent-actions repo, the same uses: transport as
+      # the Jev action) pulls the global .pr_agent.toml from the
+      # private pr-agent-config package with this job's token and
+      # extracts it into the workspace; the pr-agent step loads
+      # it via config.extra_config_url. Precedence in pr-agent:
+      # extra config < per-repo .pr_agent.toml < env block, so
+      # local overrides still win.
       - name: Global Qodo config
         id: qodo_config
         continue-on-error: true
-        uses: webuildstuffio/pr-agent-settings/qodo-config@72eccac3b473975585959eba86e37ae973229940
+        uses: webuildstuffio/pr-agent-actions/qodo-config@f8f04c6e1d0aafe4047ea251ab423d20490930c4
 
       # Failure visibility: if the config action failed to run,
       # post a FAILED "Qodo global config" check on the PR head
@@ -223,10 +296,22 @@ jobs:
       # silently. A load failure of the action reference itself
       # fails this job at preparation, which likewise surfaces as
       # a failed job check rather than a silent pass.
+      # The script body is shared with the Jev failure check in
+      # the jev job (check name, title and summary arrive via
+      # env); scripts/tests/check-workflow-drift.sh fails if the
+      # two bodies diverge.
       - name: Qodo config failure check
         if: >-
           !cancelled() && steps.qodo_config.outcome == 'failure'
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        env:
+          FAILURE_CHECK_NAME: 'Qodo global config'
+          FAILURE_CHECK_TITLE: 'Qodo global config failed to load'
+          FAILURE_CHECK_SUMMARY: >-
+            The Global Qodo config step failed, so pr-agent ran without the
+            org-global .pr_agent.toml (upstream defaults only). See the
+            "Global Qodo config" step log in the Code Suggestions job of
+            this workflow run.
         with:
           script: |
             const fromEvent = context.payload.pull_request;
@@ -240,18 +325,18 @@ jobs:
               headSha = pr.head.sha;
             }
             if (!headSha) {
-              core.warning('Qodo config step failed but no PR head SHA is available; no check posted.');
+              core.warning(`${process.env.FAILURE_CHECK_NAME} check: the guarded step failed but no PR head SHA is available; no check posted.`);
               return;
             }
             await github.rest.checks.create({
               owner: context.repo.owner, repo: context.repo.repo,
-              name: 'Qodo global config',
+              name: process.env.FAILURE_CHECK_NAME,
               head_sha: headSha,
               status: 'completed',
               conclusion: 'failure',
               output: {
-                title: 'Qodo global config failed to load',
-                summary: 'The Global Qodo config step failed, so pr-agent ran without the org-global .pr_agent.toml (upstream defaults only). See the "Global Qodo config" step log in the Code Suggestions job of this workflow run.'
+                title: process.env.FAILURE_CHECK_TITLE,
+                summary: process.env.FAILURE_CHECK_SUMMARY
               }
             });
 
@@ -263,9 +348,12 @@ jobs:
           config.global_settings_repo: "pr-agent-settings"
           config.extra_config_url: "/github/workspace/.pr_agent.global.toml"
           config.model: >-
-            ${{ vars.QODO_MODEL || 'openrouter/nvidia/nemotron-3-ultra-550b-a55b:free' }}
+            ${{ vars.QODO_MODEL ||
+            'openrouter/nvidia/nemotron-3-ultra-550b-a55b:free' }}
           config.fallback_models: >-
-            ["${{ vars.QODO_FALLBACK_1 || 'openrouter/google/gemma-4-31b-it:free' }}", "${{ vars.QODO_FALLBACK_2 || 'openrouter/google/gemma-4-26b-a4b-it:free' }}", "${{ vars.QODO_FALLBACK_3 || 'openrouter/free' }}"]
+            ["${{ vars.QODO_FALLBACK_1 || 'openrouter/google/gemma-4-31b-it:free' }}",
+            "${{ vars.QODO_FALLBACK_2 || 'openrouter/google/gemma-4-26b-a4b-it:free' }}",
+            "${{ vars.QODO_FALLBACK_3 || 'openrouter/free' }}"]
           config.num_retries: "1"
           config.retry_same_model_on_timeout: "false"
           config.ai_timeout: "180"
@@ -303,9 +391,13 @@ jobs:
       checks: write
     name: Jev tagging
     steps:
+      # Twin of the "Set PR for manual runs" step in the suggest job
+      # above: the two blocks are byte-identical on purpose (the
+      # input arrives via env, never interpolated into the script);
+      # scripts/tests/check-workflow-drift.sh fails if they diverge.
       - name: Set PR for manual runs
         if: github.event_name == 'workflow_dispatch'
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
         env:
           PR_NUMBER: ${{ github.event.inputs.pr_number }}
         with:
@@ -321,7 +413,7 @@ jobs:
 
       - name: Tag PR
         id: jev
-        uses: webuildstuffio/pr-agent-settings/jev@5409839a33f0789d5388e275f82695ce3ec98bb5
+        uses: webuildstuffio/pr-agent-actions/jev@f8f04c6e1d0aafe4047ea251ab423d20490930c4
         with:
           pr-number: ${{ github.event.pull_request.number }}
           mode: ${{ vars.JEV_TAG_MODE || 'apply' }}
@@ -336,14 +428,25 @@ jobs:
       # check. Model-call failures do not land here either:
       # jev_tag fails open internally and still posts its
       # degraded sticky.
+      # The script body is shared with the Qodo config failure
+      # check in the suggest job (check name, title and summary
+      # arrive via env); scripts/tests/check-workflow-drift.sh
+      # fails if the two bodies diverge.
       - name: Jev failure check
         if: >-
           !cancelled() && steps.jev.outcome == 'failure'
-        uses: actions/github-script@v9
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9
+        env:
+          FAILURE_CHECK_NAME: 'Jev tagging'
+          FAILURE_CHECK_TITLE: 'Jev tagging failed to run'
+          FAILURE_CHECK_SUMMARY: >-
+            The Jev tagging step failed before completing, so this PR has
+            no Jev labels and no Codex security trigger. See the "Tag PR"
+            step log in the Jev tagging job of this workflow run.
         with:
           script: |
             const fromEvent = context.payload.pull_request;
-            const prNumber = fromEvent?.number ?? Number(process.env.TARGET_PR || 0);
+            const prNumber = fromEvent?.number ?? context.payload.issue?.number ?? Number(process.env.TARGET_PR || 0);
             let headSha = fromEvent?.head?.sha ?? '';
             if (!headSha && prNumber) {
               const { data: pr } = await github.rest.pulls.get({
@@ -353,17 +456,17 @@ jobs:
               headSha = pr.head.sha;
             }
             if (!headSha) {
-              core.warning('Jev step failed but no PR head SHA is available; no check posted.');
+              core.warning(`${process.env.FAILURE_CHECK_NAME} check: the guarded step failed but no PR head SHA is available; no check posted.`);
               return;
             }
             await github.rest.checks.create({
               owner: context.repo.owner, repo: context.repo.repo,
-              name: 'Jev tagging',
+              name: process.env.FAILURE_CHECK_NAME,
               head_sha: headSha,
               status: 'completed',
               conclusion: 'failure',
               output: {
-                title: 'Jev tagging failed to run',
-                summary: 'The Jev tagging step failed before completing, so this PR has no Jev labels and no Codex security trigger. See the "Tag PR" step log in the Jev tagging job of this workflow run.'
+                title: process.env.FAILURE_CHECK_TITLE,
+                summary: process.env.FAILURE_CHECK_SUMMARY
               }
             });
