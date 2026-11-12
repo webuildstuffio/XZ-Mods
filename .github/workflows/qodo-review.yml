@@ -1,4 +1,4 @@
-# Qodo AI Code Suggestions v3.9.0
+# Qodo AI Code Suggestions v3.9.2
 # Inline code suggestions only — the highest-value, lowest-noise output.
 # All config lives in webuildstuffio/pr-agent-settings/.pr_agent.toml (global)
 # and per-repo .pr_agent.toml (overrides). This workflow is intentionally minimal.
@@ -30,6 +30,17 @@
 # /review and /describe available via manual /command in PR comments.
 #
 # CHANGELOG:
+# v3.9.2: (Nov 11 2026) Jev repinned to jev-tag v2.2.0 /
+#          jev-action v1.1.0 in pr-agent-actions (package
+#          merged as pr-agent-settings#55, ported verbatim
+#          in pr-agent-actions#1; this pin is that merge
+#          commit). Decision logic only: bounded retry with
+#          abstain-and-flag on model-call exhaustion,
+#          docs-only gate plus hard-negative criteria,
+#          Layer 1 route refinement, a dedicated
+#          diff-enriched security call with escalation
+#          concurrence, and the standalone Codex comment
+#          on escalation. Qodo side unchanged.
 # v3.9.0: (Nov 8 2026) Privacy split (pr-agent-settings #18):
 #          qodo-config and jev move to the new public
 #          webuildstuffio/pr-agent-actions repo at a pinned
@@ -361,7 +372,7 @@ jobs:
           github_action_config.auto_improve: "true"
           github_action_config.auto_review: "false"
           github_action_config.auto_describe: "false"
-  # Jev tagging (jev-tag v2.1.0 / jev-action v1.0.0): Layer 1
+  # Jev tagging (jev-tag v2.2.0 / jev-action v1.1.0): Layer 1
   # rules + one Jev Decisions API request label the PR and its
   # linked issue, and request a Codex security review when the
   # band fires. Its own job since v3.6.1, never a step inside
@@ -413,7 +424,7 @@ jobs:
 
       - name: Tag PR
         id: jev
-        uses: webuildstuffio/pr-agent-actions/jev@f8f04c6e1d0aafe4047ea251ab423d20490930c4
+        uses: webuildstuffio/pr-agent-actions/jev@abc1be22be431c86754520050880ef071b3d852a
         with:
           pr-number: ${{ github.event.pull_request.number }}
           mode: ${{ vars.JEV_TAG_MODE || 'apply' }}
