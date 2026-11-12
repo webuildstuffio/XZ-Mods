@@ -1,0 +1,44 @@
+title = "XZ-Mods betterleaks config"
+
+# Keep the full default ruleset; this file only adds the
+# rule-scoped allowlist below. (A config without [extend]
+# would REPLACE the default ruleset with an empty one and
+# blind the scan.)
+[extend]
+useDefault = true
+
+# generic-api-key false positives, verified 2026-11-12
+# against run 43159132622 (deep scan on main, total=488,
+# every finding generic-api-key):
+# The paths below are SHA256 source manifests: filename ->
+# 64-hex hash maps plus manifest metadata (schema, version,
+# source repository/archive URLs). Verified by parsing each
+# file: release-source.json (696 file hashes + 2 top-level
+# hashes), the kernel-input source manifest (41,475 hash
+# values, zero non-hash strings), the doom source manifest
+# and the wizard media manifest. The generic rule fires
+# where a manifest filename contains "key" (keys.h,
+# keyshift.c, doomkeys.h, key/display.c, ...) next to its
+# hash. boot_support.py is the same shape in code form:
+# KEY_SHA256 is the SHA256 OF the manufacturer's key file,
+# a hash constant used to verify a download; the value is
+# a hash, not key material. SHA256 hashes are not
+# credentials, so generic-api-key is allowlisted on these
+# exact anchored paths only. Every other rule still scans
+# these files (proven: a planted private key in
+# boot_support.py is still reported with this config), and
+# generic-api-key still fires on every other path,
+# including sub/release-source.json and
+# src/release-source.json (anchoring proven by control
+# scan with the pinned Betterleaks 1.9.0).
+[[rules]]
+id = "generic-api-key"
+[rules.allowlist]
+description = "SHA256 source manifests: hashes are not credentials"
+paths = [
+  '''^release-source\.json$''',
+  '''^source/xdj-xz-toolkit/vendor/tools/xz_quad/kernel-input-source-manifest\.json$''',
+  '''^source/xdj-xz-toolkit/mods/doom/source\.json$''',
+  '''^ui/assets/wizard/manifest\.json$''',
+  '''^source/xdj-xz-toolkit/builder/boot_support\.py$''',
+]
