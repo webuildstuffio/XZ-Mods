@@ -1,0 +1,62 @@
+---
+# webuildstuffio org standard — monthly, grouped
+# Ecosystems present in this repo: Cargo (src-tauri/Cargo.toml)
+# and GitHub Actions. No JS manifest exists (the ui/ frontend is
+# plain HTML/CSS/JS with no package.json), so there is no bun
+# entry and no bunfig.toml age gate.
+# NOTE: dependency-type omitted = includes all types (dev + prod).
+# "all" is NOT a valid value — Dependabot rejects the config.
+version: 2
+updates:
+  - package-ecosystem: "cargo"
+    directory: "/src-tauri"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+      time: "05:00"
+    cooldown:
+      default-days: 7
+    versioning-strategy: increase-if-necessary
+    open-pull-requests-limit: 10
+    rebase-strategy: "auto"
+    groups:
+      all-dependencies:
+        update-types:
+          - "minor"
+          - "patch"
+        patterns:
+          - "*"
+      major-updates:
+        update-types:
+          - "major"
+        patterns:
+          - "*"
+    labels:
+      - "dependencies"
+      - "cargo"
+      - "monthly-update"
+    commit-message:
+      prefix: "deps"
+      include: "scope"
+
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "monthly"
+      day: "monday"
+      time: "05:00"
+    cooldown:
+      default-days: 7
+    rebase-strategy: "auto"
+    open-pull-requests-limit: 10
+    groups:
+      all-actions:
+        patterns:
+          - "*"
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "monthly-update"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
