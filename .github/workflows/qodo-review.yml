@@ -1,4 +1,4 @@
-# Qodo AI Code Suggestions v3.9.2
+# Qodo AI Code Suggestions v3.9.3
 # Inline code suggestions only — the highest-value, lowest-noise output.
 # All config lives in webuildstuffio/pr-agent-settings/.pr_agent.toml (global)
 # and per-repo .pr_agent.toml (overrides). This workflow is intentionally minimal.
@@ -30,6 +30,16 @@
 # /review and /describe available via manual /command in PR comments.
 #
 # CHANGELOG:
+# v3.9.3: (Nov 14 2026) Jev repinned to jev-tag v2.3.0 /
+#          jev-action v1.2.0 in pr-agent-actions (built in
+#          pr-agent-settings#62, merged 600db6c2; ported
+#          verbatim in pr-agent-actions#3; this pin is that
+#          merge commit). Wave dedupe (one Codex escalation
+#          per cross-repo rollout family), Risk to ship
+#          tiers + review levels in the sticky (record
+#          only, never a merge gate), test-gap line, sticky
+#          verdict redesign with Codex delivery state.
+#          Qodo side unchanged.
 # v3.9.2: (Nov 11 2026) Jev repinned to jev-tag v2.2.0 /
 #          jev-action v1.1.0 in pr-agent-actions (package
 #          merged as pr-agent-settings#55, ported verbatim
@@ -372,7 +382,7 @@ jobs:
           github_action_config.auto_improve: "true"
           github_action_config.auto_review: "false"
           github_action_config.auto_describe: "false"
-  # Jev tagging (jev-tag v2.2.0 / jev-action v1.1.0): Layer 1
+  # Jev tagging (jev-tag v2.3.0 / jev-action v1.2.0): Layer 1
   # rules + one Jev Decisions API request label the PR and its
   # linked issue, and request a Codex security review when the
   # band fires. Its own job since v3.6.1, never a step inside
@@ -424,7 +434,7 @@ jobs:
 
       - name: Tag PR
         id: jev
-        uses: webuildstuffio/pr-agent-actions/jev@abc1be22be431c86754520050880ef071b3d852a
+        uses: webuildstuffio/pr-agent-actions/jev@26703475a6d0623eeb407fa60092be365de29efd
         with:
           pr-number: ${{ github.event.pull_request.number }}
           mode: ${{ vars.JEV_TAG_MODE || 'apply' }}
